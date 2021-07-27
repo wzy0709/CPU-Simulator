@@ -147,8 +147,8 @@ def fcfs(processes):
                 print("time %ims: Process %c completed I/O; added to ready queue %s"% 
                     (current_time, io_p.name, get_string(cpu_q) ))
 
-#SJF algo
-def sjf(processes):
+#RR algo
+def rr(processes):
     current_time = 0
     cpu_total_time = 0
     wait_time = 0
@@ -290,7 +290,7 @@ if ( __name__ == "__main__" ):
     file = open("simout.txt","a+")
     ret = fcfs(copy.deepcopy(processes))
     file.write(output(ret, processes))
-    ret = sjf(copy.deepcopy(processes))
+    ret = rr(copy.deepcopy(processes))
     file.write(output(ret, processes))
     file.close()
     
