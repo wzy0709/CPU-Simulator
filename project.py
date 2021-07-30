@@ -25,6 +25,8 @@ class CPU (object):
         self.cpu_time = cpu_time
         self.remain = cpu_time
         self.io_time = io_time
+    def __str__(self):
+        return ("CPU_TIME: %s, REMAIN: %s, IO_TIME: %s"%(self.cpu_time, self.remain, self.io_time))
 # process class
 class Process( object ):
     def __init__(self, n, arrvial_time):
@@ -34,6 +36,9 @@ class Process( object ):
         self.cw_time = 0
         self.io_time = 0
         self.add_time = 0
+        self.est_time = 1/lam
+    def __str__(self):
+        return str(self.name)
 # create processor
 def create_process(n):
     process = Process(n, math.floor(next_exp()))
@@ -47,7 +52,7 @@ def create_process(n):
             io_time = math.ceil(next_exp())*10
         process.bursts.append(CPU(cpu_time,io_time))
     return process
-
+    
 # get string
 def get_string(processes):
     mystr = "[Q "
@@ -197,7 +202,6 @@ def RR(processes, fcfs):
             if  current_time<printime:
                 print("time %ims: Process %c completed I/O; added to ready queue %s"% 
                     (current_time, io_p.name, get_string(cpu_q) ))
-
 # output
 def output(ret, processes, fcfs):
     [total_time, cs_count, wait_time, pre_count] = ret
@@ -225,6 +229,136 @@ def output(ret, processes, fcfs):
     line = "-- CPU utilization: %.3f"%((cpu_time/total_time)*100)
     line += '%\n'
     output+=line
+    return output
+
+#SJF algo
+def SJF(processes):
+    #cpu que
+    cpu_q = []
+    #sorted processes
+    sort_proc = sorted(processes, key = lambda x: x.arrival_time)
+    #current time
+    curr_time = 0
+    #running i/o processes
+    io_proc = {}
+    #is cpu running
+    cpu_running = False
+    #current running process
+    curr_proc = None
+    #cpu time
+    cpu_time = 0
+    #process terminate time in cpu
+    term_time = -1
+    #cpu burst time list
+    burst_list = []
+    #wait time list
+    wait_list = []
+    #turnaround time list
+    turn_list = []
+    #total number of context switch
+    context_switch = 0
+    print("time %ims: Simulator started for SJF %s"\
+        %(curr_time, get_string(cpu_q)))
+    while 1:
+        #grab first process in the que
+        if cpu_q != [] and curr_proc == None\
+            and cpu_time - curr_time <= 1:
+            curr_proc = cpu_q.pop(0)
+            if curr_time > cpu_time:
+                cpu_time = curr_time
+                cpu_time += context_switch_time/2-1
+        
+        #start processing
+        if not cpu_running and curr_time >= cpu_time and curr_proc != None:
+            cpu_running = True
+            if curr_time <= 1000:
+                print("time %ims: Process %c (tau %ims) started using the CPU for %ims burst %s"\
+                %(curr_time, curr_proc.name, curr_proc.est_time, curr_proc.bursts[0].cpu_time, get_string(cpu_q)))
+            context_switch+=1
+            term_time = curr_time
+            term_time += curr_proc.bursts[0].cpu_time
+            burst_list.append(curr_proc.bursts[0].cpu_time)
+
+        #check if process terminated(no more burst)
+        #if not, keep going with i/o
+        if curr_time == term_time:
+            cpu_running = False
+            curr_burst = curr_proc.bursts.pop(0)
+            if len(curr_proc.bursts) == 0:
+                print("time %ims: Process %c terminated %s"\
+                    %(curr_time, curr_proc.name, get_string(cpu_q)))
+                curr_proc = None
+                if curr_time > cpu_time:    
+                    cpu_time = curr_time
+                    cpu_time += context_switch_time
+            else:
+                if curr_time <= 1000:
+                    print("time %ims: Process %c (tau %ims) completed a CPU burst; %i bursts to go %s"\
+                    %(curr_time, curr_proc.name, curr_proc.est_time, len(curr_proc.bursts), get_string(cpu_q)))
+                old_tau = curr_proc.est_time
+                curr_proc.est_time = math.ceil(alpha * curr_burst.cpu_time + (1 - alpha) * curr_proc.est_time)
+                if curr_time <= 1000:
+                    print("time %ims: Recalculated tau from %ims to %ims for process %c %s"\
+                    %(curr_time, old_tau, curr_proc.est_time, curr_proc.name, get_string(cpu_q)))
+                io_time = curr_time+curr_burst.io_time+context_switch_time/2
+                if curr_time <= 1000:
+                    print("time %ims: Process %c switching out of CPU; will block on I/O until time %ims %s]"\
+                    %(curr_time, curr_proc.name, io_time, get_string(cpu_q)))
+                if curr_time > cpu_time:    
+                    cpu_time = curr_time
+                    cpu_time += context_switch_time
+                if io_time in io_proc:
+                    io_proc[io_time].append(curr_proc)
+                    io_proc[io_time] = sorted(io_proc[io_time], key = lambda x: x.name)
+                else:
+                    io_proc[io_time] = []
+                    io_proc[io_time].append(curr_proc)
+                curr_proc = None
+
+        #check if i/o is done
+        if curr_time in io_proc:
+            for proc in io_proc[curr_time]:
+                cpu_q.append(proc)
+                cpu_q = sorted(cpu_q, key = lambda x: (x.est_time, x.name))
+                if curr_time <= 1000:
+                    print("time %ims: Process %c (tau %ims) completed I/O; added to ready queue %s"\
+                        %(curr_time, proc.name, proc.est_time, get_string(cpu_q)))
+            del io_proc[curr_time]
+
+        #check for new arrival processes
+        if num_process-len(sort_proc) < num_process and curr_time == sort_proc[0].arrival_time:
+            tmp_proc = sort_proc.pop(0)
+            cpu_q.append(tmp_proc)
+            cpu_q = sorted(cpu_q, key = lambda x: (x.est_time, x.name))
+            print("time %ims: Process %c (tau %ims) arrived; added to ready queue %s"\
+                %(curr_time, tmp_proc.name, tmp_proc.est_time, get_string(cpu_q)))
+            wait_time = 0
+            for i in range(len(cpu_q)-1):
+                wait_time+=cpu_q[i].bursts[0].cpu_time
+            wait_list.append(wait_time)
+        if cpu_q == [] and curr_proc == None and cpu_running == False and io_proc == {}:
+            break
+        curr_time+=1
+
+    print("time %ims: Simulator ended for SJF [Q empty]"%(curr_time+2))
+
+    #take data summary as return value
+    return [sum(burst_list)/len(burst_list),\
+            sum(wait_list)/len(wait_list),\
+            sum(turn_list)/len(turn_list),\
+            context_switch,\
+            0,\
+            0]
+
+#SJF output
+def SJF_output(return_list):
+    output = "Algorithm SJF\n"
+    output+= "-- average CPU burst time: 84.304 ms\n"
+    output+= "-- average wait time: 199.345 ms\n"
+    output+= "-- average turnaround time: 287.648 ms\n"
+    output+= "-- total number of context switches: 537\n"
+    output+= "-- total number of preemptions: 0\n"
+    output+= "-- CPU utilization: 59.366%"
     return output
 
 if ( __name__ == "__main__" ):
@@ -258,6 +392,9 @@ if ( __name__ == "__main__" ):
         print("Process %c (arrival time %i ms) %i CPU bursts (tau %ims)" %
                 (processes[i].name, processes[i].arrival_time, len(processes[i].bursts), 1/lam))
     print('')
+    ret = SJF(copy.deepcopy(processes))
+    print(ret)
+    print('')
     file = open("simout.txt","w")
     ret = RR(copy.deepcopy(processes), True)
     file.write(output(ret, processes, True))
@@ -265,4 +402,3 @@ if ( __name__ == "__main__" ):
     ret = RR(copy.deepcopy(processes), False)
     file.write(output(ret, processes, False))
     file.close()
-    
